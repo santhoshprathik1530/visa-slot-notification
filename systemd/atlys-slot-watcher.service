@@ -1,0 +1,15 @@
+[Unit]
+Description=Atlys Italy Slot Watcher
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/atlys-slot-watcher
+EnvironmentFile=/opt/atlys-slot-watcher/.env
+ExecStart=/usr/bin/python3 /opt/atlys-slot-watcher/atlys_italy_notifier.py serve --watch-country italy --interval-seconds 300
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

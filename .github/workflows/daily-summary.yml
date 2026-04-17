@@ -1,0 +1,36 @@
+name: Daily Italy Summary
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "30 3 * * *"
+
+jobs:
+  daily-summary:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run daily summary
+        env:
+          ALERT_CHANNELS: ${{ secrets.ALERT_CHANNELS }}
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          SMTP_USE_STARTTLS: ${{ secrets.SMTP_USE_STARTTLS }}
+          SMTP_USE_SSL: ${{ secrets.SMTP_USE_SSL }}
+          EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+          EMAIL_TO: ${{ secrets.EMAIL_TO }}
+          TWILIO_ACCOUNT_SID: ${{ secrets.TWILIO_ACCOUNT_SID }}
+          TWILIO_AUTH_TOKEN: ${{ secrets.TWILIO_AUTH_TOKEN }}
+          TWILIO_WHATSAPP_FROM: ${{ secrets.TWILIO_WHATSAPP_FROM }}
+          TWILIO_WHATSAPP_TO: ${{ secrets.TWILIO_WHATSAPP_TO }}
+        run: |
+          python atlys_italy_notifier.py daily-summary --watch-country italy
