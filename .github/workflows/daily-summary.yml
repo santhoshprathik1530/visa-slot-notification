@@ -2,8 +2,6 @@ name: Daily Italy Summary
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: "13 * * * *"
 
 jobs:
   daily-summary:
