@@ -101,13 +101,13 @@ For your requested schedule, cron is simpler:
 Every 5 minutes, alert whenever any slot exists:
 
 ```cron
-*/5 * * * * cd /opt/atlys-slot-watcher && set -a && . ./.env && set +a && /usr/bin/python3 /opt/atlys-slot-watcher/atlys_italy_notifier.py check --watch-country italy --alert-mode always_when_present --required-city bangalore >> /opt/atlys-slot-watcher/logs/poll.log 2>&1
+2,7,12,17,22,27,32,37,42,47,52,57 * * * * cd /opt/atlys-slot-watcher && set -a && . ./.env && set +a && /usr/bin/python3 /opt/atlys-slot-watcher/atlys_italy_notifier.py check --watch-country italy --alert-mode always_when_present --required-city bangalore >> /opt/atlys-slot-watcher/logs/poll.log 2>&1
 ```
 
 Daily at 9:00 AM IST summary:
 
 ```cron
-0 9 * * * cd /opt/atlys-slot-watcher && set -a && . ./.env && set +a && TZ=Asia/Kolkata /usr/bin/python3 /opt/atlys-slot-watcher/atlys_italy_notifier.py daily-summary --watch-country italy >> /opt/atlys-slot-watcher/logs/daily.log 2>&1
+13 * * * * cd /opt/atlys-slot-watcher && set -a && . ./.env && set +a && TZ=Asia/Kolkata /usr/bin/python3 /opt/atlys-slot-watcher/atlys_italy_notifier.py daily-summary --watch-country italy >> /opt/atlys-slot-watcher/logs/daily.log 2>&1
 ```
 
 ## Deploy with Docker
