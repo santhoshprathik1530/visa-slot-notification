@@ -79,6 +79,7 @@ class AppConfig:
     timeout_seconds: int
     interval_seconds: int
     alert_mode: str
+    required_city: str | None
 
 
 def ensure_dirs() -> None:
@@ -599,12 +600,16 @@ def normalize_country_slug(value: str) -> str:
 
 def config_from_args(args: argparse.Namespace) -> AppConfig:
     country_slug = normalize_country_slug(args.watch_country)
+    required_city = getattr(args, "required_city", None)
+    if required_city:
+        required_city = required_city.strip().lower().replace(" ", "_")
     return AppConfig(
         country_slug=country_slug,
         country_code=COUNTRY_CODES[country_slug],
         timeout_seconds=args.timeout,
         interval_seconds=getattr(args, "interval_seconds", DEFAULT_INTERVAL_SECONDS),
         alert_mode=getattr(args, "alert_mode", "changes_only"),
+        required_city=required_city,
     )
 
 
@@ -632,6 +637,14 @@ def run_check(config: AppConfig, notify_enabled: bool) -> int:
 
     current_slots = extract_country_slots(payload, country_slug=config.country_slug)
     changes = detect_changes(previous_slots, current_slots)
+
+    if config.required_city:
+        current_slots = {
+            city: slot_date
+            for city, slot_date in current_slots.items()
+            if city == config.required_city
+        }
+        changes = [change for change in changes if change.city == config.required_city]
 
     output: dict[str, Any] = {"slots": current_slots, "changes": [change.__dict__ for change in changes]}
 
@@ -712,6 +725,7 @@ def parse_args() -> argparse.Namespace:
         command_parser.add_argument("--watch-country", default="italy")
         command_parser.add_argument("--timeout", type=int, default=DEFAULT_TIMEOUT_SECONDS)
         command_parser.add_argument("--no-notify", action="store_true")
+        command_parser.add_argument("--required-city", default=None)
         command_parser.add_argument(
             "--alert-mode",
             choices=["changes_only", "always_when_present", "daily_summary"],

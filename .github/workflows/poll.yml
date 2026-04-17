@@ -33,4 +33,4 @@ jobs:
           TWILIO_WHATSAPP_FROM: ${{ secrets.TWILIO_WHATSAPP_FROM }}
           TWILIO_WHATSAPP_TO: ${{ secrets.TWILIO_WHATSAPP_TO }}
         run: |
-          python atlys_italy_notifier.py check --watch-country italy --alert-mode always_when_present
+          python atlys_italy_notifier.py check --watch-country italy --alert-mode always_when_present --required-city bangalore

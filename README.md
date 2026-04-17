@@ -54,13 +54,13 @@ set +a
 python3 atlys_italy_notifier.py check --watch-country austria
 ```
 
-Run the real watcher forever for Italy and alert on every poll if any slot exists:
+Run the real watcher forever for Italy and alert on every poll if Bangalore has a slot:
 
 ```bash
 set -a
 source .env
 set +a
-python3 atlys_italy_notifier.py serve --watch-country italy --interval-seconds 300 --alert-mode always_when_present
+python3 atlys_italy_notifier.py serve --watch-country italy --interval-seconds 300 --alert-mode always_when_present --required-city bangalore
 ```
 
 Run a daily summary:
@@ -101,7 +101,7 @@ For your requested schedule, cron is simpler:
 Every 5 minutes, alert whenever any slot exists:
 
 ```cron
-*/5 * * * * cd /opt/atlys-slot-watcher && set -a && . ./.env && set +a && /usr/bin/python3 /opt/atlys-slot-watcher/atlys_italy_notifier.py check --watch-country italy --alert-mode always_when_present >> /opt/atlys-slot-watcher/logs/poll.log 2>&1
+*/5 * * * * cd /opt/atlys-slot-watcher && set -a && . ./.env && set +a && /usr/bin/python3 /opt/atlys-slot-watcher/atlys_italy_notifier.py check --watch-country italy --alert-mode always_when_present --required-city bangalore >> /opt/atlys-slot-watcher/logs/poll.log 2>&1
 ```
 
 Daily at 9:00 AM IST summary:
