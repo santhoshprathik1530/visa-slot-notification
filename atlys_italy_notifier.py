@@ -161,7 +161,7 @@ def log_run(
                 delivery_results_json,
                 error_text,
                 exit_code
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 now_iso(),
