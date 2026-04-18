@@ -158,27 +158,33 @@ def html_page(summary: dict[str, Any], runs: list[sqlite3.Row]) -> str:
       <meta name="viewport" content="width=device-width, initial-scale=1">
       <title>Visa Slot Dashboard</title>
       <style>
-        body {{ font-family: ui-sans-serif, system-ui, sans-serif; margin: 0; background: #0b1020; color: #e8edf7; }}
-        .wrap {{ padding: 24px; }}
-        .toolbar {{ display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 16px; }}
-        .toolbar label {{ font-size: 14px; color: #c7d2f7; }}
-        .toolbar select {{ background: #121936; color: #e8edf7; border: 1px solid #24315f; border-radius: 8px; padding: 8px 10px; }}
-        .cards {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-bottom: 24px; }}
-        .card {{ background: #121936; border: 1px solid #24315f; border-radius: 12px; padding: 16px; }}
-        .card h2 {{ margin: 0 0 8px; font-size: 14px; color: #9fb0e8; }}
-        .card p {{ margin: 0; font-size: 20px; font-weight: 700; }}
-        .meta {{ font-size: 12px; color: #93a3d8; margin-top: 6px; }}
-        table {{ width: 100%; border-collapse: collapse; background: #121936; border: 1px solid #24315f; }}
-        th, td {{ border: 1px solid #24315f; padding: 10px; vertical-align: top; text-align: left; font-size: 13px; }}
-        th {{ position: sticky; top: 0; background: #172149; }}
-        pre {{ margin: 0; white-space: pre-wrap; word-break: break-word; color: #d6defa; }}
-        a {{ color: #8ab4ff; }}
+        body {{ font-family: Georgia, "Times New Roman", serif; margin: 0; background: #f5f1e8; color: #1f1a17; }}
+        .wrap {{ max-width: 1400px; margin: 0 auto; padding: 24px; }}
+        h1 {{ margin: 0 0 8px; font-size: 32px; }}
+        .subtle {{ margin: 0 0 18px; color: #6e6258; font-size: 15px; }}
+        .toolbar {{ display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 18px; padding: 12px 14px; background: #fffdf8; border: 1px solid #d8cfc0; }}
+        .toolbar label {{ font-size: 14px; color: #433a34; }}
+        .toolbar select {{ background: #fff; color: #1f1a17; border: 1px solid #b8aa95; border-radius: 0; padding: 6px 8px; min-width: 160px; }}
+        .cards {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin-bottom: 18px; }}
+        .card {{ background: #fffdf8; border: 1px solid #d8cfc0; padding: 14px; box-shadow: 0 1px 0 rgba(0,0,0,0.03); }}
+        .card h2 {{ margin: 0 0 6px; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: #7a6f66; }}
+        .card p {{ margin: 0; font-size: 22px; font-weight: 700; line-height: 1.25; }}
+        .meta {{ font-size: 12px; color: #6e6258; margin-top: 6px; }}
+        .table-wrap {{ border: 1px solid #d8cfc0; background: #fffdf8; overflow-x: auto; }}
+        table {{ width: 100%; border-collapse: collapse; }}
+        th, td {{ border: 1px solid #e4dbcf; padding: 10px; vertical-align: top; text-align: left; font-size: 13px; }}
+        th {{ position: sticky; top: 0; background: #ece3d5; color: #332b27; }}
+        tbody tr:nth-child(even) {{ background: #faf5ec; }}
+        pre {{ margin: 0; white-space: pre-wrap; word-break: break-word; color: #2e2723; font-family: "Courier New", monospace; font-size: 12px; }}
+        a {{ color: #1e5a96; text-decoration: none; }}
+        a:hover {{ text-decoration: underline; }}
+        .pill {{ display: inline-block; border: 1px solid #b8aa95; padding: 2px 8px; font-size: 12px; background: #f7efe1; color: #4b4039; }}
       </style>
     </head>
     <body>
       <div class="wrap">
         <h1>Visa Slot Dashboard</h1>
-        <p><a href="/api/runs">JSON API</a></p>
+        <p class="subtle">Run history for Bangalore alerts and daily summaries. <a href="/api/runs">Open JSON API</a></p>
         <div class="toolbar">
           <label>Timezone
             <select id="timezone-select">
@@ -213,28 +219,30 @@ def html_page(summary: dict[str, Any], runs: list[sqlite3.Row]) -> str:
             <div class="meta">{escape(bangalore_meta or "No Bangalore slot seen yet")}</div>
           </div>
         </div>
-        <table>
-          <thead>
-            <tr>
-              <th>ID</th>
-              <th>Created At</th>
-              <th>Command</th>
-              <th>City Filter</th>
-              <th>Mode</th>
-              <th>Slots</th>
-              <th>API</th>
-              <th>Alert</th>
-              <th>Exit</th>
-              <th>Delivery</th>
-              <th>Current Slots</th>
-              <th>Changes</th>
-              <th>Error</th>
-            </tr>
-          </thead>
-          <tbody>
-            {"".join(rows_html)}
-          </tbody>
-        </table>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Created At</th>
+                <th>Command</th>
+                <th>City Filter</th>
+                <th>Mode</th>
+                <th>Slots</th>
+                <th>API</th>
+                <th>Alert</th>
+                <th>Exit</th>
+                <th>Delivery</th>
+                <th>Current Slots</th>
+                <th>Changes</th>
+                <th>Error</th>
+              </tr>
+            </thead>
+            <tbody>
+              {"".join(rows_html)}
+            </tbody>
+          </table>
+        </div>
       </div>
       <script>
         const timezoneSelect = document.getElementById('timezone-select');
