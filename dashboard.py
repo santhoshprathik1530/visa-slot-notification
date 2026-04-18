@@ -29,6 +29,7 @@ def initialize_db() -> None:
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 created_at TEXT NOT NULL,
                 command TEXT NOT NULL,
+                run_source TEXT NOT NULL DEFAULT 'manual',
                 country_slug TEXT NOT NULL,
                 required_city TEXT,
                 alert_mode TEXT NOT NULL,
@@ -43,6 +44,11 @@ def initialize_db() -> None:
             )
             """
         )
+        columns = {
+            row["name"] for row in connection.execute("PRAGMA table_info(runs)").fetchall()
+        }
+        if "run_source" not in columns:
+            connection.execute("ALTER TABLE runs ADD COLUMN run_source TEXT NOT NULL DEFAULT 'manual'")
 
 
 def fetch_recent_runs(limit: int = 100) -> list[sqlite3.Row]:
@@ -73,7 +79,7 @@ def fetch_summary() -> dict[str, Any]:
         ).fetchone()
         last_summary_run = connection.execute(
             """
-            SELECT created_at, command, alert_status, api_status, slots_count
+            SELECT created_at, command, run_source, alert_status, api_status, slots_count
             FROM runs
             WHERE command = 'daily-summary'
             ORDER BY id DESC
@@ -82,7 +88,7 @@ def fetch_summary() -> dict[str, Any]:
         ).fetchone()
         last_poll_run = connection.execute(
             """
-            SELECT created_at, command, alert_status, api_status, slots_count
+            SELECT created_at, command, run_source, alert_status, api_status, slots_count
             FROM runs
             WHERE command = 'check'
             ORDER BY id DESC
@@ -136,6 +142,7 @@ def html_page(summary: dict[str, Any], runs: list[sqlite3.Row]) -> str:
               <td>{row["id"]}</td>
               <td class="utc-ts" data-utc="{escape(str(row["created_at"]))}">{escape(str(row["created_at"]))}</td>
               <td>{escape(str(row["command"]))}</td>
+              <td><span class="pill">{escape(str(row["run_source"] or "manual"))}</span></td>
               <td>{escape(str(row_required_city or "-"))}</td>
               <td>{escape(str(row["alert_mode"]))}</td>
               <td>{row["slots_count"]}</td>
@@ -223,11 +230,12 @@ def html_page(summary: dict[str, Any], runs: list[sqlite3.Row]) -> str:
           <table>
             <thead>
               <tr>
-                <th>ID</th>
-                <th>Created At</th>
-                <th>Command</th>
-                <th>City Filter</th>
-                <th>Mode</th>
+              <th>ID</th>
+              <th>Created At</th>
+              <th>Command</th>
+              <th>Source</th>
+              <th>City Filter</th>
+              <th>Mode</th>
                 <th>Slots</th>
                 <th>API</th>
                 <th>Alert</th>

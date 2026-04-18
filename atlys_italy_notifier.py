@@ -84,6 +84,7 @@ class AppConfig:
     interval_seconds: int
     alert_mode: str
     required_city: str | None
+    run_source: str
 
 
 def ensure_dirs() -> None:
@@ -107,6 +108,7 @@ def initialize_db() -> None:
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 created_at TEXT NOT NULL,
                 command TEXT NOT NULL,
+                run_source TEXT NOT NULL DEFAULT 'manual',
                 country_slug TEXT NOT NULL,
                 required_city TEXT,
                 alert_mode TEXT NOT NULL,
@@ -121,6 +123,11 @@ def initialize_db() -> None:
             )
             """
         )
+        columns = {
+            row["name"] for row in connection.execute("PRAGMA table_info(runs)").fetchall()
+        }
+        if "run_source" not in columns:
+            connection.execute("ALTER TABLE runs ADD COLUMN run_source TEXT NOT NULL DEFAULT 'manual'")
 
 
 def log_run(
@@ -142,6 +149,7 @@ def log_run(
             INSERT INTO runs (
                 created_at,
                 command,
+                run_source,
                 country_slug,
                 required_city,
                 alert_mode,
@@ -158,6 +166,7 @@ def log_run(
             (
                 now_iso(),
                 command,
+                config.run_source,
                 config.country_slug,
                 config.required_city,
                 config.alert_mode,
@@ -758,6 +767,7 @@ def config_from_args(args: argparse.Namespace) -> AppConfig:
         interval_seconds=getattr(args, "interval_seconds", DEFAULT_INTERVAL_SECONDS),
         alert_mode=getattr(args, "alert_mode", "changes_only"),
         required_city=required_city,
+        run_source=getattr(args, "run_source", "manual"),
     )
 
 
@@ -939,6 +949,7 @@ def parse_args() -> argparse.Namespace:
         command_parser.add_argument("--timeout", type=int, default=DEFAULT_TIMEOUT_SECONDS)
         command_parser.add_argument("--no-notify", action="store_true")
         command_parser.add_argument("--required-city", default=None)
+        command_parser.add_argument("--run-source", choices=["manual", "cron"], default="manual")
         command_parser.add_argument(
             "--alert-mode",
             choices=["changes_only", "always_when_present", "daily_summary"],
