@@ -2,9 +2,11 @@
 from __future__ import annotations
 
 import argparse
+import html
 import json
 import os
 import smtplib
+import sqlite3
 import sys
 import time
 import xml.sax.saxutils as xml_utils
@@ -26,6 +28,8 @@ API_URL_TEMPLATE = (
 ROOT = Path(__file__).resolve().parent
 STATE_DIR = ROOT / ".state"
 LOG_DIR = ROOT / "logs"
+DATA_DIR = ROOT / "data"
+DB_PATH = DATA_DIR / "runs.db"
 DEFAULT_INTERVAL_SECONDS = 300
 DEFAULT_TIMEOUT_SECONDS = 30
 USER_AGENT = (
@@ -85,6 +89,88 @@ class AppConfig:
 def ensure_dirs() -> None:
     STATE_DIR.mkdir(parents=True, exist_ok=True)
     LOG_DIR.mkdir(parents=True, exist_ok=True)
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def get_db_connection() -> sqlite3.Connection:
+    ensure_dirs()
+    connection = sqlite3.connect(DB_PATH)
+    connection.row_factory = sqlite3.Row
+    return connection
+
+
+def initialize_db() -> None:
+    with get_db_connection() as connection:
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS runs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_at TEXT NOT NULL,
+                command TEXT NOT NULL,
+                country_slug TEXT NOT NULL,
+                required_city TEXT,
+                alert_mode TEXT NOT NULL,
+                api_status TEXT,
+                alert_status TEXT,
+                slots_count INTEGER NOT NULL DEFAULT 0,
+                current_slots_json TEXT NOT NULL,
+                changes_json TEXT NOT NULL,
+                delivery_results_json TEXT NOT NULL,
+                error_text TEXT,
+                exit_code INTEGER NOT NULL DEFAULT 0
+            )
+            """
+        )
+
+
+def log_run(
+    *,
+    config: AppConfig,
+    command: str,
+    api_status: str,
+    alert_status: str,
+    current_slots: dict[str, str],
+    changes: list[SlotChange],
+    delivery_results: list[dict[str, str]],
+    error_text: str | None,
+    exit_code: int,
+) -> None:
+    initialize_db()
+    with get_db_connection() as connection:
+        connection.execute(
+            """
+            INSERT INTO runs (
+                created_at,
+                command,
+                country_slug,
+                required_city,
+                alert_mode,
+                api_status,
+                alert_status,
+                slots_count,
+                current_slots_json,
+                changes_json,
+                delivery_results_json,
+                error_text,
+                exit_code
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                now_iso(),
+                command,
+                config.country_slug,
+                config.required_city,
+                config.alert_mode,
+                api_status,
+                alert_status,
+                len(current_slots),
+                json.dumps(current_slots, sort_keys=True),
+                json.dumps([change.__dict__ for change in changes]),
+                json.dumps(delivery_results),
+                error_text,
+                exit_code,
+            ),
+        )
 
 
 def state_file_for(country_slug: str) -> Path:
@@ -677,6 +763,8 @@ def config_from_args(args: argparse.Namespace) -> AppConfig:
 
 def run_check(config: AppConfig, notify_enabled: bool) -> int:
     ensure_dirs()
+    initialize_db()
+    command_name = "daily-summary" if config.alert_mode == "daily_summary" else "check"
     state = load_state(config.country_slug)
     previous_slots = state.get("last_snapshot") or {}
 
@@ -687,6 +775,17 @@ def run_check(config: AppConfig, notify_enabled: bool) -> int:
         state["last_api_status"] = f"http_error:{exc.code}"
         state["last_error"] = f"HTTP error: {exc.code}"
         save_state(config.country_slug, state)
+        log_run(
+            config=config,
+            command=command_name,
+            api_status=state["last_api_status"],
+            alert_status="failed_before_alert",
+            current_slots={},
+            changes=[],
+            delivery_results=[],
+            error_text=state["last_error"],
+            exit_code=1,
+        )
         print(f"HTTP error while fetching Atlys API: {exc.code}", file=sys.stderr)
         return 1
     except URLError as exc:
@@ -694,6 +793,17 @@ def run_check(config: AppConfig, notify_enabled: bool) -> int:
         state["last_api_status"] = "network_error"
         state["last_error"] = f"Network error: {exc.reason}"
         save_state(config.country_slug, state)
+        log_run(
+            config=config,
+            command=command_name,
+            api_status=state["last_api_status"],
+            alert_status="failed_before_alert",
+            current_slots={},
+            changes=[],
+            delivery_results=[],
+            error_text=state["last_error"],
+            exit_code=1,
+        )
         print(f"Network error while fetching Atlys API: {exc.reason}", file=sys.stderr)
         return 1
 
@@ -743,6 +853,17 @@ def run_check(config: AppConfig, notify_enabled: bool) -> int:
         state["last_snapshot"] = current_slots
         state["last_alert_status"] = "no_changes"
         save_state(config.country_slug, state)
+        log_run(
+            config=config,
+            command=command_name,
+            api_status=state["last_api_status"],
+            alert_status=state["last_alert_status"],
+            current_slots=current_slots,
+            changes=changes,
+            delivery_results=[],
+            error_text=None,
+            exit_code=0,
+        )
         print(json.dumps(output, indent=2))
         return 0
 
@@ -760,12 +881,34 @@ def run_check(config: AppConfig, notify_enabled: bool) -> int:
             f'{result["channel"]}: {result.get("error", "unknown error")}' for result in failed
         )
         save_state(config.country_slug, state)
+        log_run(
+            config=config,
+            command=command_name,
+            api_status=state["last_api_status"],
+            alert_status=state["last_alert_status"],
+            current_slots=current_slots,
+            changes=changes,
+            delivery_results=delivery_results,
+            error_text=state["last_error"],
+            exit_code=2,
+        )
         print(json.dumps(output, indent=2))
         return 2
 
     state["last_snapshot"] = current_slots
     state["last_alert_status"] = "sent" if notify_enabled else "skipped"
     save_state(config.country_slug, state)
+    log_run(
+        config=config,
+        command=command_name,
+        api_status=state["last_api_status"],
+        alert_status=state["last_alert_status"],
+        current_slots=current_slots,
+        changes=changes,
+        delivery_results=delivery_results,
+        error_text=None,
+        exit_code=0,
+    )
     print(json.dumps(output, indent=2))
     return 0
 

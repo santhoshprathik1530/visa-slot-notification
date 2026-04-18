@@ -82,6 +82,7 @@ State is stored in:
 Files included:
 
 - [systemd/atlys-slot-watcher.service](/Users/santhoshkasam/Desktop/Stuff/Others/visa slot notification/systemd/atlys-slot-watcher.service)
+- [systemd/visa-slot-dashboard.service](/Users/santhoshkasam/Desktop/Stuff/Others/visa slot notification/systemd/visa-slot-dashboard.service)
 
 Typical layout:
 
@@ -136,6 +137,36 @@ docker run -d \
 - Twilio voice requires a voice-capable Twilio number.
 - Telegram requires creating a bot and finding the target chat id.
 - Pushover is a practical server-to-phone push option if you want push-style alerts without building your own mobile app.
+
+## Run logging and dashboard
+
+Every notifier run is now stored in SQLite at:
+
+- `data/runs.db`
+
+A lightweight dashboard server is included:
+
+```bash
+python3 dashboard.py
+```
+
+It serves:
+
+- `/` HTML dashboard
+- `/api/runs` JSON API
+
+Example on a VM:
+
+```bash
+cd ~/visa-slot-notification
+python3 dashboard.py
+```
+
+Then open:
+
+- `http://YOUR_VM_IP:8080`
+
+If using GCP, create a firewall rule or expose port `8080` on the VM.
 
 ## Source and API
 

@@ -1,5 +1,6 @@
 .env
 .state/
 logs/
+data/
 __pycache__/
 *.pyc
