@@ -1,66 +1,96 @@
-# Atlys Italy Slot Notifier
+# Alerting and Monitoring System
 
-This watcher polls Atlys' Schengen appointments API and is currently intended to run on a GCP VM.
+A small Python-based alerting system that polls an external data source, evaluates custom alert conditions, sends notifications across multiple channels, stores run history in SQLite, and exposes a lightweight dashboard for operations visibility.
 
-Current production behavior:
+This repository currently includes an Atlys-based visa-slot watcher as the concrete implementation, but the structure is generic enough to present as a portfolio project for:
 
-- every 5 minutes: check only `Italy -> Bangalore`
-- send alert only when a Bangalore slot is visible
-- twice daily at `9:00 AM IST` and `9:00 PM IST`: send a Bangalore summary
-- email is the reliable channel
-- WhatsApp works as a normal Twilio sandbox message while the 24-hour window is active
+- polling and monitoring jobs
+- multi-channel notifications
+- scheduled automation
+- SQLite-backed operational logging
+- simple internal dashboards
 
-## Channels supported from a server
+## What It Does
 
-- Email via SMTP
-- Telegram bot messages
-- SMS via Twilio
-- WhatsApp via Twilio
-- Voice phone calls via Twilio
-- Pushover push notifications
-- Generic webhooks
-- Slack incoming webhooks
-- Discord webhooks
+At a high level, the project:
 
-## Channels not directly possible from a generic server
+1. polls an upstream API
+2. extracts and normalizes the relevant availability data
+3. applies alert rules
+4. sends notifications through configured channels
+5. logs every run into SQLite
+6. serves an HTML dashboard and JSON API for inspection
 
-- iMessage: not available as a normal server-side API
-- Native iPhone/Android push without an app: you need your own app plus APNs or FCM device tokens
+## Current Capabilities
 
-If you want true native mobile push later, the clean route is a tiny app that registers with APNs or FCM and gives this server a device token.
+- Polling against the Atlys appointments API
+- Country filtering
+- Optional city-specific filtering
+- Two alert modes:
+  - `always_when_present`
+  - `daily_summary`
+- Multi-channel delivery:
+  - Email via SMTP
+  - WhatsApp via Twilio
+  - SMS via Twilio
+  - Voice via Twilio
+  - Telegram
+  - Slack webhook
+  - Discord webhook
+  - Generic webhook
+  - Pushover
+- Run history stored in SQLite
+- Dashboard with:
+  - latest summary run
+  - latest poll run
+  - last seen slot timestamp
+  - run filtering
+  - timezone toggle
+  - delivery/error inspection
 
-## Quick start
+## Project Structure
 
-For a minimal first deployment, use only:
+- [atlys_italy_notifier.py](/Users/santhoshkasam/Desktop/Stuff/Others/visa slot notification/atlys_italy_notifier.py)
+  Core polling and notification engine
+- [dashboard.py](/Users/santhoshkasam/Desktop/Stuff/Others/visa slot notification/dashboard.py)
+  Lightweight HTML and JSON dashboard
+- [.env.example](/Users/santhoshkasam/Desktop/Stuff/Others/visa slot notification/.env.example)
+  Example environment configuration
+- [systemd/visa-slot-dashboard.service](/Users/santhoshkasam/Desktop/Stuff/Others/visa slot notification/systemd/visa-slot-dashboard.service)
+  Example systemd unit for the dashboard
 
-- `email`
-- `whatsapp`
+## Example Use Case
 
-Copy the sample config and fill only the channels you actually want:
+One production-style configuration for this project is:
+
+- poll every 5 minutes
+- monitor only `Italy -> Bangalore`
+- alert only when a slot is visible
+- send summary updates twice daily
+- deliver via email and WhatsApp
+- log every run to SQLite
+- expose a dashboard on a VM
+
+That is just one configuration. The engine itself is more general.
+
+## Quick Start
+
+Copy the sample environment:
 
 ```bash
 cp .env.example .env
 ```
 
-Run one test check without sending alerts:
+Load the environment and run a one-time check:
 
 ```bash
 set -a
 source .env
 set +a
-python3 atlys_italy_notifier.py check --watch-country austria --no-notify
+python3 atlys_italy_notifier.py check --watch-country italy
 ```
 
-Run a live test alert with Austria:
-
-```bash
-set -a
-source .env
-set +a
-python3 atlys_italy_notifier.py check --watch-country austria
-```
-
-Run a one-time Bangalore poll:
+Run a city-specific poll:
 
 ```bash
 set -a
@@ -69,7 +99,7 @@ set +a
 python3 atlys_italy_notifier.py check --watch-country italy --alert-mode always_when_present --required-city bangalore
 ```
 
-Run a one-time Bangalore summary:
+Run a summary:
 
 ```bash
 set -a
@@ -78,101 +108,123 @@ set +a
 python3 atlys_italy_notifier.py daily-summary --watch-country italy --required-city bangalore
 ```
 
-State is stored in:
+## Configuration Model
 
-- [.state/italy_slots_state.json](/Users/santhoshkasam/Desktop/Stuff/Others/visa slot notification/.state/italy_slots_state.json)
-- [.state/austria_slots_state.json](/Users/santhoshkasam/Desktop/Stuff/Others/visa slot notification/.state/austria_slots_state.json)
+The notifier is driven by environment variables.
 
-## Current VM setup
+Common examples:
 
-Files included:
+- `ALERT_CHANNELS=email,whatsapp`
+- `SMTP_*` for email
+- `TWILIO_*` for Twilio delivery
+- `EMAIL_TO` for email recipients
+- `TWILIO_WHATSAPP_TO` for WhatsApp recipients
 
-- [systemd/visa-slot-dashboard.service](/Users/santhoshkasam/Desktop/Stuff/Others/visa slot notification/systemd/visa-slot-dashboard.service)
+The project supports multiple recipients via comma-separated values.
 
-Project path on the VM:
+## Scheduling
 
-```bash
-/home/kasamsanthoshprathik/visa-slot-notification
-```
+The project does not require an internal scheduler. It is intended to be triggered by:
 
-### Cron
+- cron
+- systemd timers
+- GitHub Actions
+- other schedulers
 
-The intended final crontab is:
+Example cron:
 
 ```cron
 CRON_TZ=Asia/Kolkata
-*/5 * * * * cd /home/kasamsanthoshprathik/visa-slot-notification && set -a && . ./.env && set +a && /usr/bin/python3 /home/kasamsanthoshprathik/visa-slot-notification/atlys_italy_notifier.py check --watch-country italy --alert-mode always_when_present --required-city bangalore --run-source cron >> /home/kasamsanthoshprathik/visa-slot-notification/logs/poll.log 2>&1
-0 9,21 * * * cd /home/kasamsanthoshprathik/visa-slot-notification && set -a && . ./.env && set +a && /usr/bin/python3 /home/kasamsanthoshprathik/visa-slot-notification/atlys_italy_notifier.py daily-summary --watch-country italy --required-city bangalore --run-source cron >> /home/kasamsanthoshprathik/visa-slot-notification/logs/daily.log 2>&1
-30 23 * * * cp /home/kasamsanthoshprathik/visa-slot-notification/data/runs.db /home/kasamsanthoshprathik/visa-slot-notification/backups/runs-$(date +\%F).db
+*/5 * * * * cd /path/to/project && set -a && . ./.env && set +a && /usr/bin/python3 /path/to/project/atlys_italy_notifier.py check --watch-country italy --alert-mode always_when_present --required-city bangalore --run-source cron >> /path/to/project/logs/poll.log 2>&1
+0 9,21 * * * cd /path/to/project && set -a && . ./.env && set +a && /usr/bin/python3 /path/to/project/atlys_italy_notifier.py daily-summary --watch-country italy --required-city bangalore --run-source cron >> /path/to/project/logs/daily.log 2>&1
 ```
 
-### Dashboard service
+## Logging and Persistence
 
-To run the dashboard permanently on the VM:
-
-```bash
-cd ~/visa-slot-notification
-sudo cp systemd/visa-slot-dashboard.service /etc/systemd/system/
-sudo sed -i 's|/opt/atlys-slot-watcher|/home/kasamsanthoshprathik/visa-slot-notification|g' /etc/systemd/system/visa-slot-dashboard.service
-sudo systemctl daemon-reload
-sudo systemctl enable --now visa-slot-dashboard
-sudo systemctl status visa-slot-dashboard
-```
-
-## Important setup notes
-
-- Twilio WhatsApp in the current setup uses normal sandbox messages, not production templates.
-- To keep WhatsApp working, each recipient must message the Twilio sandbox number within the 24-hour window.
-- The sandbox inbound auto-reply can be silenced by pointing the Twilio sandbox inbound webhook to `/twilio/inbound` on the dashboard server.
-- Twilio voice requires a voice-capable Twilio number.
-- Telegram requires creating a bot and finding the target chat id.
-- Pushover is a practical server-to-phone push option if you want push-style alerts without building your own mobile app.
-
-## Run logging and dashboard
-
-Every notifier run is now stored in SQLite at:
+Every run is written into SQLite:
 
 - `data/runs.db`
 
-The DB stores:
+Logged fields include:
 
-- created time
+- run time
 - command type
 - source (`manual` or `cron`)
-- city filter
 - alert mode
-- current slots
-- changes
+- city filter
+- current slot snapshot
+- detected changes
 - delivery results
 - errors
+- exit code
 
-A lightweight dashboard server is included:
+This makes the project suitable for basic auditability and debugging without external infrastructure.
+
+## Dashboard
+
+Start the dashboard:
 
 ```bash
 python3 dashboard.py
 ```
 
-It serves:
+It exposes:
 
 - `/` HTML dashboard
 - `/api/runs` JSON API
-- `/twilio/inbound` silent inbound webhook for Twilio sandbox replies
+- `/twilio/inbound` silent webhook for Twilio sandbox inbound replies
 
-Example on a VM:
+The UI includes:
 
-```bash
-cd ~/visa-slot-notification
-python3 dashboard.py
-```
+- latest summary run
+- latest poll run
+- run history table
+- source labels
+- timezone toggle
+- filtering between summary and poll runs
 
-Then open:
+## Deployment Patterns
 
-- `http://YOUR_VM_IP:8080`
+This project works well on:
 
-If using GCP, create a firewall rule or expose port `8080` on the VM.
+- a small VM
+- a home server
+- a low-cost cloud instance
 
-## Source and API
+Typical setup:
 
-The watcher uses the same Atlys API the site bundle calls:
+1. clone the repo onto a VM
+2. configure `.env`
+3. add cron jobs
+4. run the dashboard with systemd
+5. optionally back up `data/runs.db`
+
+## Notes on WhatsApp
+
+For Twilio WhatsApp sandbox usage:
+
+- free-form outbound messages only work while the 24-hour customer window is active
+- users may need to message the sandbox periodically to keep the window alive
+- inbound auto-replies can be silenced by pointing Twilio inbound handling to `/twilio/inbound`
+
+For production-grade WhatsApp outside the 24-hour window, proper template messaging is required.
+
+## Why This Makes a Good Portfolio Project
+
+This repository demonstrates:
+
+- practical polling and monitoring logic
+- external API integration
+- alert fanout across multiple delivery channels
+- scheduling and automation patterns
+- persistent operational logging
+- lightweight observability tooling
+- deployability on a simple VM
+
+## Source Data
+
+The current concrete implementation uses the Atlys appointments API:
 
 `https://api.atlys.com/api/v2/application/slots/IT?...`
+
+The overall structure can be adapted to other alerting or availability-monitoring use cases.
