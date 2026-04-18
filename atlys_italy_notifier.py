@@ -170,6 +170,10 @@ def country_name(country_slug: str) -> str:
     return COUNTRY_DISPLAY_NAMES.get(country_slug, country_slug.title())
 
 
+def build_reply_hint() -> str:
+    return 'Reply "ok" or "ack" when you see this.'
+
+
 def build_alert_payload(
     country_slug: str, changes: list[SlotChange], current_slots: dict[str, str]
 ) -> AlertPayload:
@@ -221,16 +225,48 @@ def build_alert_payload(
     )
 
 
-def build_presence_alert_payload(country_slug: str, current_slots: dict[str, str]) -> AlertPayload:
+def build_presence_alert_payload(
+    country_slug: str,
+    current_slots: dict[str, str],
+    required_city: str | None = None,
+) -> AlertPayload:
     label = country_name(country_slug)
     page_url = COUNTRY_PAGE_URLS[country_slug]
     cities = list(current_slots.items())
+    reply_hint = build_reply_hint()
+
+    if country_slug == "italy" and required_city == "bangalore":
+        if not cities:
+            title = "Italy visa summary"
+            message = "Hey, No Italy visa Slots available today :("
+            details = "\n".join([message, reply_hint])
+        else:
+            city, slot_date = cities[0]
+            title = "Bangalore has Italy visa slots"
+            message = "hey hey hey , bangalore has visa slots."
+            details = "\n".join(
+                [
+                    message,
+                    f"City: {pretty_city(city)}",
+                    f"Date: {slot_date}",
+                    f"Atlys: {page_url}",
+                    reply_hint,
+                ]
+            )
+        return AlertPayload(
+            title=title,
+            message=message,
+            details=details,
+            country_slug=country_slug,
+            page_url=page_url,
+            changes=[],
+            current_slots=current_slots,
+        )
 
     if not cities:
         title = f"{label} visa slots daily summary"
         message = "No visible slots are currently available."
     elif len(cities) == 1:
-        earliest = min(current_slots.values())
         city, slot_date = cities[0]
         title = f"{label} visa slot available"
         message = f"{pretty_city(city)} has a visible slot on {slot_date}."
@@ -255,6 +291,7 @@ def build_presence_alert_payload(country_slug: str, current_slots: dict[str, str
             lines.append(f"- {pretty_city(city)}: {slot_date}")
     else:
         lines.append("- None")
+    lines.extend(["", reply_hint])
 
     return AlertPayload(
         title=title,
@@ -687,10 +724,18 @@ def run_check(config: AppConfig, notify_enabled: bool) -> int:
     elif config.alert_mode == "always_when_present":
         if current_slots:
             should_alert = True
-            alert_payload = build_presence_alert_payload(config.country_slug, current_slots)
+            alert_payload = build_presence_alert_payload(
+                config.country_slug,
+                current_slots,
+                required_city=config.required_city,
+            )
     elif config.alert_mode == "daily_summary":
         should_alert = True
-        alert_payload = build_presence_alert_payload(config.country_slug, current_slots)
+        alert_payload = build_presence_alert_payload(
+            config.country_slug,
+            current_slots,
+            required_city=config.required_city,
+        )
     else:
         raise SystemExit(f"Unsupported alert mode: {config.alert_mode}")
 
