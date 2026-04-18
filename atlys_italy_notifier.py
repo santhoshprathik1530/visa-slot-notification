@@ -519,13 +519,38 @@ def send_twilio_whatsapp_alert(payload: AlertPayload) -> None:
         )
 
     sender_value = sender if sender.startswith("whatsapp:") else f"whatsapp:{sender}"
+    body = build_twilio_whatsapp_body(payload)
     for recipient in recipients:
         to_value = recipient if recipient.startswith("whatsapp:") else f"whatsapp:{recipient}"
         http_post_form(
             twilio_messages_url(),
-            {"From": sender_value, "To": to_value, "Body": payload.details[:1600]},
+            {"From": sender_value, "To": to_value, "Body": body[:1600]},
             headers=twilio_headers(),
         )
+
+
+def build_twilio_whatsapp_body(payload: AlertPayload) -> str:
+    template_mode = os.getenv("TWILIO_WHATSAPP_TEMPLATE_MODE", "").strip().lower()
+    if template_mode in {"sandbox_order_notification", "sandbox_order"}:
+        return build_twilio_sandbox_order_template(payload)
+    return payload.details
+
+
+def build_twilio_sandbox_order_template(payload: AlertPayload) -> str:
+    country = country_name(payload.country_slug)
+    item = f"{country} slot alert"
+    if payload.current_slots:
+        deliver_on = min(payload.current_slots.values())
+        details = payload.message
+    else:
+        deliver_on = datetime.now(timezone.utc).date().isoformat()
+        details = "No visible slots currently available."
+
+    details = f"{details} {payload.page_url}".strip()
+    return (
+        f"Your visa order of {item} has shipped and should be delivered on "
+        f"{deliver_on}. Details: {details}"
+    )
 
 
 def send_twilio_voice_alert(payload: AlertPayload) -> None:

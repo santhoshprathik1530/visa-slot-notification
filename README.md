@@ -132,6 +132,7 @@ docker run -d \
 ## Important setup notes
 
 - Twilio WhatsApp requires WhatsApp sender setup and user opt-in. Outside an active conversation window, template rules apply.
+- For Twilio WhatsApp Sandbox testing outside the 24-hour window, set `TWILIO_WHATSAPP_TEMPLATE_MODE=sandbox_order_notification` to use Twilio's pre-approved sandbox order notification template format.
 - Twilio voice requires a voice-capable Twilio number.
 - Telegram requires creating a bot and finding the target chat id.
 - Pushover is a practical server-to-phone push option if you want push-style alerts without building your own mobile app.
