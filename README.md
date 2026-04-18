@@ -1,8 +1,14 @@
 # Atlys Italy Slot Notifier
 
-This watcher polls Atlys' Schengen appointments API and is designed to run on a server.
+This watcher polls Atlys' Schengen appointments API and is currently intended to run on a GCP VM.
 
-It alerts when Italy appears for a new Indian city or when an existing city's earliest visible date moves earlier. It does not alert on later dates or disappearing slots.
+Current production behavior:
+
+- every 5 minutes: check only `Italy -> Bangalore`
+- send alert only when a Bangalore slot is visible
+- twice daily at `9:00 AM IST` and `9:00 PM IST`: send a Bangalore summary
+- email is the reliable channel
+- WhatsApp works as a normal Twilio sandbox message while the 24-hour window is active
 
 ## Channels supported from a server
 
@@ -54,22 +60,22 @@ set +a
 python3 atlys_italy_notifier.py check --watch-country austria
 ```
 
-Run the real watcher forever for Italy and alert on every poll if Bangalore has a slot:
+Run a one-time Bangalore poll:
 
 ```bash
 set -a
 source .env
 set +a
-python3 atlys_italy_notifier.py serve --watch-country italy --interval-seconds 300 --alert-mode always_when_present --required-city bangalore
+python3 atlys_italy_notifier.py check --watch-country italy --alert-mode always_when_present --required-city bangalore
 ```
 
-Run a daily summary:
+Run a one-time Bangalore summary:
 
 ```bash
 set -a
 source .env
 set +a
-python3 atlys_italy_notifier.py daily-summary --watch-country italy
+python3 atlys_italy_notifier.py daily-summary --watch-country italy --required-city bangalore
 ```
 
 State is stored in:
@@ -77,63 +83,47 @@ State is stored in:
 - [.state/italy_slots_state.json](/Users/santhoshkasam/Desktop/Stuff/Others/visa slot notification/.state/italy_slots_state.json)
 - [.state/austria_slots_state.json](/Users/santhoshkasam/Desktop/Stuff/Others/visa slot notification/.state/austria_slots_state.json)
 
-## Deploy on a VPS with systemd or cron
+## Current VM setup
 
 Files included:
 
-- [systemd/atlys-slot-watcher.service](/Users/santhoshkasam/Desktop/Stuff/Others/visa slot notification/systemd/atlys-slot-watcher.service)
 - [systemd/visa-slot-dashboard.service](/Users/santhoshkasam/Desktop/Stuff/Others/visa slot notification/systemd/visa-slot-dashboard.service)
 
-Typical layout:
-
-1. Copy the project to `/opt/atlys-slot-watcher`
-2. Put your filled `.env` there
-3. Copy the service file to `/etc/systemd/system/`
-4. Run:
+Project path on the VM:
 
 ```bash
+/home/kasamsanthoshprathik/visa-slot-notification
+```
+
+### Cron
+
+The intended final crontab is:
+
+```cron
+CRON_TZ=Asia/Kolkata
+*/5 * * * * cd /home/kasamsanthoshprathik/visa-slot-notification && set -a && . ./.env && set +a && /usr/bin/python3 /home/kasamsanthoshprathik/visa-slot-notification/atlys_italy_notifier.py check --watch-country italy --alert-mode always_when_present --required-city bangalore --run-source cron >> /home/kasamsanthoshprathik/visa-slot-notification/logs/poll.log 2>&1
+0 9,21 * * * cd /home/kasamsanthoshprathik/visa-slot-notification && set -a && . ./.env && set +a && /usr/bin/python3 /home/kasamsanthoshprathik/visa-slot-notification/atlys_italy_notifier.py daily-summary --watch-country italy --required-city bangalore --run-source cron >> /home/kasamsanthoshprathik/visa-slot-notification/logs/daily.log 2>&1
+30 23 * * * cp /home/kasamsanthoshprathik/visa-slot-notification/data/runs.db /home/kasamsanthoshprathik/visa-slot-notification/backups/runs-$(date +\%F).db
+```
+
+### Dashboard service
+
+To run the dashboard permanently on the VM:
+
+```bash
+cd ~/visa-slot-notification
+sudo cp systemd/visa-slot-dashboard.service /etc/systemd/system/
+sudo sed -i 's|/opt/atlys-slot-watcher|/home/kasamsanthoshprathik/visa-slot-notification|g' /etc/systemd/system/visa-slot-dashboard.service
 sudo systemctl daemon-reload
-sudo systemctl enable --now atlys-slot-watcher
-sudo systemctl status atlys-slot-watcher
-```
-
-For your requested schedule, cron is simpler:
-
-Every 5 minutes, alert whenever any slot exists:
-
-```cron
-2,7,12,17,22,27,32,37,42,47,52,57 * * * * cd /opt/atlys-slot-watcher && set -a && . ./.env && set +a && /usr/bin/python3 /opt/atlys-slot-watcher/atlys_italy_notifier.py check --watch-country italy --alert-mode always_when_present --required-city bangalore >> /opt/atlys-slot-watcher/logs/poll.log 2>&1
-```
-
-Daily at 9:00 AM IST summary:
-
-```cron
-13 * * * * cd /opt/atlys-slot-watcher && set -a && . ./.env && set +a && TZ=Asia/Kolkata /usr/bin/python3 /opt/atlys-slot-watcher/atlys_italy_notifier.py daily-summary --watch-country italy >> /opt/atlys-slot-watcher/logs/daily.log 2>&1
-```
-
-## Deploy with Docker
-
-Build:
-
-```bash
-docker build -t atlys-slot-watcher .
-```
-
-Run:
-
-```bash
-docker run -d \
-  --name atlys-slot-watcher \
-  --restart unless-stopped \
-  --env-file .env \
-  -v "$(pwd)/.state:/app/.state" \
-  atlys-slot-watcher
+sudo systemctl enable --now visa-slot-dashboard
+sudo systemctl status visa-slot-dashboard
 ```
 
 ## Important setup notes
 
-- Twilio WhatsApp requires WhatsApp sender setup and user opt-in. Outside an active conversation window, template rules apply.
-- For Twilio WhatsApp Sandbox testing outside the 24-hour window, set `TWILIO_WHATSAPP_TEMPLATE_MODE=sandbox_order_notification` to use Twilio's pre-approved sandbox order notification template format.
+- Twilio WhatsApp in the current setup uses normal sandbox messages, not production templates.
+- To keep WhatsApp working, each recipient must message the Twilio sandbox number within the 24-hour window.
+- The sandbox inbound auto-reply can be silenced by pointing the Twilio sandbox inbound webhook to `/twilio/inbound` on the dashboard server.
 - Twilio voice requires a voice-capable Twilio number.
 - Telegram requires creating a bot and finding the target chat id.
 - Pushover is a practical server-to-phone push option if you want push-style alerts without building your own mobile app.
@@ -143,6 +133,18 @@ docker run -d \
 Every notifier run is now stored in SQLite at:
 
 - `data/runs.db`
+
+The DB stores:
+
+- created time
+- command type
+- source (`manual` or `cron`)
+- city filter
+- alert mode
+- current slots
+- changes
+- delivery results
+- errors
 
 A lightweight dashboard server is included:
 
@@ -154,6 +156,7 @@ It serves:
 
 - `/` HTML dashboard
 - `/api/runs` JSON API
+- `/twilio/inbound` silent inbound webhook for Twilio sandbox replies
 
 Example on a VM:
 
