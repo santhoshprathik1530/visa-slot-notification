@@ -71,6 +71,24 @@ def fetch_summary() -> dict[str, Any]:
         last_run = connection.execute(
             "SELECT created_at, command, alert_status, api_status, slots_count FROM runs ORDER BY id DESC LIMIT 1"
         ).fetchone()
+        last_summary_run = connection.execute(
+            """
+            SELECT created_at, command, alert_status, api_status, slots_count
+            FROM runs
+            WHERE command = 'daily-summary'
+            ORDER BY id DESC
+            LIMIT 1
+            """
+        ).fetchone()
+        last_poll_run = connection.execute(
+            """
+            SELECT created_at, command, alert_status, api_status, slots_count
+            FROM runs
+            WHERE command = 'check'
+            ORDER BY id DESC
+            LIMIT 1
+            """
+        ).fetchone()
         last_bangalore_slot = connection.execute(
             """
             SELECT created_at, current_slots_json
@@ -84,6 +102,8 @@ def fetch_summary() -> dict[str, Any]:
         "total_runs": total_runs,
         "failed_runs": failed_runs,
         "last_run": dict(last_run) if last_run else None,
+        "last_summary_run": dict(last_summary_run) if last_summary_run else None,
+        "last_poll_run": dict(last_poll_run) if last_poll_run else None,
         "last_bangalore_slot": dict(last_bangalore_slot) if last_bangalore_slot else None,
     }
 
@@ -95,20 +115,28 @@ def html_page(summary: dict[str, Any], runs: list[sqlite3.Row]) -> str:
 
     last_bangalore = summary.get("last_bangalore_slot")
     bangalore_text = "Never"
+    bangalore_meta = ""
     if last_bangalore:
         bangalore_slots = json.loads(last_bangalore["current_slots_json"])
         bangalore_date = bangalore_slots.get("bangalore", "unknown")
-        bangalore_text = f'{last_bangalore["created_at"]} ({bangalore_date})'
+        bangalore_text = last_bangalore["created_at"]
+        bangalore_meta = f"Slot date: {bangalore_date}"
 
     rows_html = []
     for row in runs:
+        row_command = row["command"]
+        row_required_city = row["required_city"] or ""
+        row_type = "poll"
+        if row_command == "daily-summary":
+            row_type = "summary"
+
         rows_html.append(
             f"""
-            <tr>
+            <tr data-run-type="{escape(row_type)}">
               <td>{row["id"]}</td>
-              <td>{escape(str(row["created_at"]))}</td>
+              <td class="utc-ts" data-utc="{escape(str(row["created_at"]))}">{escape(str(row["created_at"]))}</td>
               <td>{escape(str(row["command"]))}</td>
-              <td>{escape(str(row["required_city"] or "-"))}</td>
+              <td>{escape(str(row_required_city or "-"))}</td>
               <td>{escape(str(row["alert_mode"]))}</td>
               <td>{row["slots_count"]}</td>
               <td>{escape(str(row["api_status"] or "-"))}</td>
@@ -132,10 +160,14 @@ def html_page(summary: dict[str, Any], runs: list[sqlite3.Row]) -> str:
       <style>
         body {{ font-family: ui-sans-serif, system-ui, sans-serif; margin: 0; background: #0b1020; color: #e8edf7; }}
         .wrap {{ padding: 24px; }}
+        .toolbar {{ display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 16px; }}
+        .toolbar label {{ font-size: 14px; color: #c7d2f7; }}
+        .toolbar select {{ background: #121936; color: #e8edf7; border: 1px solid #24315f; border-radius: 8px; padding: 8px 10px; }}
         .cards {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-bottom: 24px; }}
         .card {{ background: #121936; border: 1px solid #24315f; border-radius: 12px; padding: 16px; }}
         .card h2 {{ margin: 0 0 8px; font-size: 14px; color: #9fb0e8; }}
         .card p {{ margin: 0; font-size: 20px; font-weight: 700; }}
+        .meta {{ font-size: 12px; color: #93a3d8; margin-top: 6px; }}
         table {{ width: 100%; border-collapse: collapse; background: #121936; border: 1px solid #24315f; }}
         th, td {{ border: 1px solid #24315f; padding: 10px; vertical-align: top; text-align: left; font-size: 13px; }}
         th {{ position: sticky; top: 0; background: #172149; }}
@@ -147,11 +179,39 @@ def html_page(summary: dict[str, Any], runs: list[sqlite3.Row]) -> str:
       <div class="wrap">
         <h1>Visa Slot Dashboard</h1>
         <p><a href="/api/runs">JSON API</a></p>
+        <div class="toolbar">
+          <label>Timezone
+            <select id="timezone-select">
+              <option value="Asia/Kolkata">IST</option>
+              <option value="America/Chicago">CDT</option>
+            </select>
+          </label>
+          <label>Show logs
+            <select id="run-filter">
+              <option value="all">All</option>
+              <option value="summary">Summary only</option>
+              <option value="poll">5 min alert only</option>
+            </select>
+          </label>
+        </div>
         <div class="cards">
           <div class="card"><h2>Total Runs</h2><p>{summary["total_runs"]}</p></div>
           <div class="card"><h2>Failed Runs</h2><p>{summary["failed_runs"]}</p></div>
-          <div class="card"><h2>Last Run</h2><p>{summary["last_run"]["created_at"] if summary["last_run"] else "Never"}</p></div>
-          <div class="card"><h2>Last Bangalore Slot Seen</h2><p>{bangalore_text}</p></div>
+          <div class="card">
+            <h2>Latest Summary Run</h2>
+            <p class="utc-ts" data-utc="{escape(summary["last_summary_run"]["created_at"] if summary["last_summary_run"] else "")}">{escape(summary["last_summary_run"]["created_at"] if summary["last_summary_run"] else "Never")}</p>
+            <div class="meta">Slots: {summary["last_summary_run"]["slots_count"] if summary["last_summary_run"] else 0}</div>
+          </div>
+          <div class="card">
+            <h2>Latest 5 Min Alert Run</h2>
+            <p class="utc-ts" data-utc="{escape(summary["last_poll_run"]["created_at"] if summary["last_poll_run"] else "")}">{escape(summary["last_poll_run"]["created_at"] if summary["last_poll_run"] else "Never")}</p>
+            <div class="meta">Slots: {summary["last_poll_run"]["slots_count"] if summary["last_poll_run"] else 0}</div>
+          </div>
+          <div class="card">
+            <h2>Last Bangalore Slot Seen</h2>
+            <p class="utc-ts" data-utc="{escape(last_bangalore["created_at"] if last_bangalore else "")}">{escape(bangalore_text)}</p>
+            <div class="meta">{escape(bangalore_meta or "No Bangalore slot seen yet")}</div>
+          </div>
         </div>
         <table>
           <thead>
@@ -176,6 +236,47 @@ def html_page(summary: dict[str, Any], runs: list[sqlite3.Row]) -> str:
           </tbody>
         </table>
       </div>
+      <script>
+        const timezoneSelect = document.getElementById('timezone-select');
+        const runFilter = document.getElementById('run-filter');
+
+        function formatTimestamp(value, timezone) {{
+          if (!value) return 'Never';
+          const date = new Date(value);
+          if (Number.isNaN(date.getTime())) return value;
+          return new Intl.DateTimeFormat('en-IN', {{
+            timeZone: timezone,
+            year: 'numeric',
+            month: 'short',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            hour12: true,
+          }}).format(date) + ' ' + timezone;
+        }}
+
+        function updateTimestamps() {{
+          const timezone = timezoneSelect.value;
+          document.querySelectorAll('.utc-ts').forEach((node) => {{
+            const raw = node.dataset.utc;
+            if (!raw) return;
+            node.textContent = formatTimestamp(raw, timezone);
+          }});
+        }}
+
+        function applyFilter() {{
+          const filter = runFilter.value;
+          document.querySelectorAll('tbody tr[data-run-type]').forEach((row) => {{
+            row.style.display = filter === 'all' || row.dataset.runType === filter ? '' : 'none';
+          }});
+        }}
+
+        timezoneSelect.addEventListener('change', updateTimestamps);
+        runFilter.addEventListener('change', applyFilter);
+        updateTimestamps();
+        applyFilter();
+      </script>
     </body>
     </html>
     """
